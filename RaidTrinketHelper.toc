@@ -1,0 +1,8 @@
+## Interface: 11200
+## Title: Raid Trinket Helper
+## Notes: Target raid member and use trinket
+## Author: You
+## Version: 1.0
+## SavedVariables: RaidTrinketHelperDB
+
+RaidTrinketHelper.lua
