@@ -56,8 +56,6 @@ leftColumn:SetWidth(18)
 leftColumn:SetHeight(36)
 leftColumn:SetPoint("LEFT", frame, "LEFT", 0, 0)
 
-local dropdownMenu = CreateFrame("Frame", "RaidTrinketHelperDropdownMenu", UIParent, "UIDropDownMenuTemplate")
-
 local selectButton = CreateFrame("Button", "RaidTrinketHelperSelectButton", leftColumn)
 selectButton:SetWidth(16)
 selectButton:SetHeight(16)
@@ -70,6 +68,7 @@ selectButton:SetBackdrop({
     insets = { left = 2, right = 2, top = 2, bottom = 2 }
 })
 selectButton:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
+selectButton:RegisterForClicks("LeftButtonUp")
 
 local selectText = selectButton:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 selectText:SetPoint("CENTER", selectButton, "CENTER", 0, 0)
@@ -129,6 +128,22 @@ trinketButton.icon = trinketIcon
 
 local cooldownText = trinketButton:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 cooldownText:SetText("")
+
+local popupMenu = CreateFrame("Frame", "RaidTrinketHelperPopupMenu", UIParent)
+popupMenu:SetFrameStrata("DIALOG")
+popupMenu:SetBackdrop({
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true,
+    tileSize = 16,
+    edgeSize = 16,
+    insets = { left = 4, right = 4, top = 4, bottom = 4 }
+})
+popupMenu:SetBackdropColor(0, 0, 0, 0.95)
+popupMenu:EnableMouse(true)
+popupMenu:Hide()
+
+local menuButtons = {}
 
 local function UpdateCooldownFont()
     local font, _, flags = cooldownText:GetFont()
@@ -282,44 +297,104 @@ local function GetGroupList()
     return list
 end
 
-local function Dropdown_OnClick()
-    SetSelected(this.value, this.arg1)
+local function CreatePopupButton(index)
+    local btn = CreateFrame("Button", "RaidTrinketHelperPopupButton" .. index, popupMenu)
+    btn:SetWidth(110)
+    btn:SetHeight(16)
+
+    btn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8"
+    })
+    btn:SetBackdropColor(0, 0, 0, 0)
+
+    btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    btn.text:SetPoint("LEFT", btn, "LEFT", 4, 0)
+    btn.text:SetJustifyH("LEFT")
+
+    btn.check = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    btn.check:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
+    btn.check:SetText("")
+
+    btn:SetScript("OnEnter", function()
+        this:SetBackdropColor(0.25, 0.25, 0.25, 0.8)
+    end)
+
+    btn:SetScript("OnLeave", function()
+        this:SetBackdropColor(0, 0, 0, 0)
+    end)
+
+    btn:SetScript("OnClick", function()
+        SetSelected(this.unit, this.nameText)
+        popupMenu:Hide()
+    end)
+
+    return btn
 end
 
-local function InitializeDropdown()
+local function RefreshDropdown()
     local list = GetGroupList()
-    local foundCurrent = nil
+    local count = table.getn(list)
     local i
 
-    for i = 1, table.getn(list) do
-        local entry = list[i]
-        local info = {}
+    local maxRows = 10
+    local colWidth = 115
+    local rowHeight = 16
+    local padding = 8
 
-        info.text = entry.name
-        info.value = entry.unit
-        info.arg1 = entry.name
-        info.func = Dropdown_OnClick
-        info.checked = (selectedUnit == entry.unit)
-        UIDropDownMenu_AddButton(info)
+    local cols = math.ceil(count / maxRows)
+    if cols < 1 then cols = 1 end
+    if cols > 4 then cols = 4 end
 
-        if selectedUnit == entry.unit then
-            foundCurrent = 1
+    local rows = count
+    if rows > maxRows then rows = maxRows end
+    if rows < 1 then rows = 1 end
+
+    popupMenu:SetWidth(cols * colWidth + padding * 2)
+    popupMenu:SetHeight(rows * rowHeight + padding * 2)
+
+    for i = 1, count do
+        if not menuButtons[i] then
+            menuButtons[i] = CreatePopupButton(i)
         end
+
+        local btn = menuButtons[i]
+        local index = i - 1
+        local col = math.floor(index / maxRows)
+        local row = math.mod(index, maxRows)
+
+        btn.unit = list[i].unit
+        btn.nameText = list[i].name
+        btn.text:SetText(list[i].name)
+
+        if selectedUnit == list[i].unit then
+            btn.check:SetText("*")
+        else
+            btn.check:SetText("")
+        end
+
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", popupMenu, "TOPLEFT", padding + col * colWidth, -(padding + row * rowHeight))
+        btn:Show()
     end
 
-    if not foundCurrent then
-        if table.getn(list) > 0 then
-            SetSelected(list[1].unit, list[1].name)
-        else
-            SetSelected(nil, nil)
-        end
+    for i = count + 1, table.getn(menuButtons) do
+        menuButtons[i]:Hide()
+    end
+
+    if count > 0 and not selectedUnit then
+        SetSelected(list[1].unit, list[1].name)
     end
 end
 
-UIDropDownMenu_Initialize(dropdownMenu, InitializeDropdown, "MENU")
-
 selectButton:SetScript("OnClick", function()
-    ToggleDropDownMenu(1, nil, dropdownMenu, selectButton, 0, 0)
+    if popupMenu:IsShown() then
+        popupMenu:Hide()
+    else
+        RefreshDropdown()
+        popupMenu:ClearAllPoints()
+        popupMenu:SetPoint("TOPLEFT", selectButton, "TOPRIGHT", 4, 0)
+        popupMenu:Show()
+    end
 end)
 
 selectButton:SetScript("OnEnter", function()
@@ -410,10 +485,6 @@ trinketButton:SetScript("OnClick", function()
     UpdateTrinketCooldown()
 end)
 
-local function RefreshDropdown()
-    UIDropDownMenu_Initialize(dropdownMenu, InitializeDropdown, "MENU")
-end
-
 local configFrame = CreateFrame("Frame", "RaidTrinketHelperConfigFrame", UIParent)
 configFrame:SetWidth(210)
 configFrame:SetHeight(150)
@@ -486,6 +557,7 @@ showCheckbox:SetScript("OnClick", function()
         RaidTrinketHelperDB.isShown = true
     else
         frame:Hide()
+        popupMenu:Hide()
         RaidTrinketHelperDB.isShown = false
     end
 end)
@@ -505,7 +577,6 @@ frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
 frame:RegisterEvent("VARIABLES_LOADED")
 
 frame:SetScript("OnEvent", function()
-    
     if event == "VARIABLES_LOADED" then
         EnsureDB()
 
@@ -517,17 +588,14 @@ frame:SetScript("OnEvent", function()
             frame:Show()
         else
             frame:Hide()
+            popupMenu:Hide()
         end
-
-        
     end
 
     RefreshDropdown()
     UpdateTrinketIcon()
     UpdateTrinketCooldown()
 end)
-
-
 
 frame:SetScript("OnUpdate", function()
     cooldownElapsed = cooldownElapsed + arg1
@@ -561,6 +629,7 @@ SlashCmdList["RAIDTRINKETHELPER"] = function(msg)
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
         SaveFramePosition(frame)
         frame:Show()
+        popupMenu:Hide()
         RaidTrinketHelperDB.isShown = true
         print("RaidTrinketHelper reset.")
     else
